@@ -38,6 +38,19 @@ func main() {
 
 	gamestate := gamelogic.NewGameState(username)
 
+	err = pubsub.SubscribeJSON(
+		connection,
+		routing.ExchangePerilDirect,
+		"pause."+username,
+		routing.PauseKey,
+		pubsub.Transient,
+		handlerPause(gamestate),
+	)
+	if err != nil {
+		fmt.Printf("Error subscribing to channel: %v", err)
+		return
+	}
+
 	// REPL
 	for {
 		words := gamelogic.GetInput()
@@ -71,4 +84,11 @@ func main() {
 	}
 
 	fmt.Println("Shutting down Peril client...")
+}
+
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
+	return func(ps routing.PlayingState) {
+		defer fmt.Print("> ")
+		gs.HandlePause(ps)
+	}
 }

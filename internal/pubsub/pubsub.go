@@ -7,11 +7,11 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type simpleQueueType string
+type SimpleQueueType string
 
 const (
-	Durable   simpleQueueType = "durable"
-	Transient simpleQueueType = "transient"
+	Durable   SimpleQueueType = "durable"
+	Transient SimpleQueueType = "transient"
 )
 
 func ConnectToRabbitMQ() (*amqp.Connection, *amqp.Channel, error) {
@@ -42,12 +42,64 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	return ch.Publish(exchange, key, false, false, msg)
 }
 
+func SubscribeJSON[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType,
+	handler func(T),
+) error {
+	channel, _, err := DeclareAndBind(
+		conn,
+		exchange,
+		queueName,
+		key,
+		queueType,
+	)
+	if err != nil {
+		return err
+	}
+
+	deliveryCh, err := channel.Consume(
+		queueName,
+		"",
+		false,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+
+	go consumeChannel(deliveryCh, handler)
+	return nil
+}
+
+func consumeChannel[T any](ch <-chan amqp.Delivery, handler func(T)) {
+	for message := range ch {
+		var data T
+		err := json.Unmarshal(message.Body, &data)
+		if err != nil {
+			fmt.Printf("error unmarshalling data consumed by client: %v\n", err)
+		}
+
+		handler(data)
+		err = message.Ack(false)
+		if err != nil {
+			fmt.Printf("error acknowledging delivery on client: %v\n", err)
+		}
+	}
+}
+
 func DeclareAndBind(
 	conn *amqp.Connection,
 	exchange,
 	queueName,
 	key string,
-	queueType simpleQueueType,
+	queueType SimpleQueueType,
 ) (*amqp.Channel, amqp.Queue, error) {
 	channel, err := conn.Channel()
 	if err != nil {

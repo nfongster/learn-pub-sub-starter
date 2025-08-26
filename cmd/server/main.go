@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 
@@ -67,9 +66,10 @@ func main() {
 }
 
 func ToggleGameState(channel *amqp091.Channel, pause bool) error {
-	data, err := json.Marshal(routing.PlayingState{IsPaused: pause})
-	if err != nil {
-		return err
-	}
-	return pubsub.PublishJSON(channel, routing.ExchangePerilDirect, routing.PauseKey, data)
+	return pubsub.PublishJSON(
+		channel,
+		routing.ExchangePerilDirect,
+		routing.PauseKey,
+		routing.PlayingState{IsPaused: pause},
+	)
 }
