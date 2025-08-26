@@ -8,28 +8,18 @@ import (
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
-	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func main() {
 	fmt.Println("Starting Peril server...")
 
-	connectionStr := "amqp://guest:guest@localhost:5672/"
-	connection, err := amqp.Dial(connectionStr)
-
+	connection, channel, err := pubsub.ConnectToRabbitMQ()
 	if err != nil {
-		fmt.Printf("Error connecting to server: %v", err)
+		fmt.Printf("Error connecting to RabbitMQ: %v", err)
 		return
 	}
-	defer connection.Close()
-
 	fmt.Println("Connection was successful!")
-
-	channel, err := connection.Channel()
-	if err != nil {
-		fmt.Printf("Error creating a channel: %v", err)
-		return
-	}
+	defer connection.Close()
 
 	data, err := json.Marshal(routing.PlayingState{IsPaused: true})
 	if err != nil {
