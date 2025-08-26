@@ -23,6 +23,18 @@ func main() {
 	defer connection.Close()
 	gamelogic.PrintServerHelp()
 
+	_, _, err = pubsub.DeclareAndBind(
+		connection,
+		routing.ExchangePerilTopic,
+		routing.GameLogSlug,
+		routing.GameLogSlug+".*",
+		pubsub.Durable,
+	)
+	if err != nil {
+		fmt.Printf("Error declaring/binding to queue: %v", err)
+		return
+	}
+
 	// REPL
 	for {
 		input := gamelogic.GetInput()
