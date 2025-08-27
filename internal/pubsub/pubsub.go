@@ -14,6 +14,14 @@ const (
 	Transient SimpleQueueType = "transient"
 )
 
+type AckType string
+
+const (
+	Ack         AckType = "ack"
+	NackRequeue AckType = "nack_requeue"
+	NackDiscard AckType = "nack_discard"
+)
+
 func ConnectToRabbitMQ() (*amqp.Connection, *amqp.Channel, error) {
 	connectionStr := "amqp://guest:guest@localhost:5672/"
 	connection, err := amqp.Dial(connectionStr)
@@ -48,7 +56,7 @@ func SubscribeJSON[T any](
 	queueName,
 	key string,
 	queueType SimpleQueueType,
-	handler func(T),
+	handler func(T) AckType,
 ) error {
 	channel, _, err := DeclareAndBind(
 		conn,
@@ -78,7 +86,7 @@ func SubscribeJSON[T any](
 	return nil
 }
 
-func consumeChannel[T any](ch <-chan amqp.Delivery, handler func(T)) {
+func consumeChannel[T any](ch <-chan amqp.Delivery, handler func(T) AckType) {
 	for message := range ch {
 		var data T
 		err := json.Unmarshal(message.Body, &data)
@@ -86,7 +94,21 @@ func consumeChannel[T any](ch <-chan amqp.Delivery, handler func(T)) {
 			fmt.Printf("error unmarshalling data consumed by client: %v\n", err)
 		}
 
-		handler(data)
+		switch ackType := handler(data); ackType {
+		case Ack:
+			fmt.Println("Sending an Ack...")
+			err = message.Ack(false)
+		case NackRequeue:
+			fmt.Println("Sending a Nack with requeue...")
+			err = message.Nack(false, true)
+		case NackDiscard:
+			fmt.Println("Sending a Nack without requeue...")
+			err = message.Nack(false, false)
+		}
+		if err != nil {
+			fmt.Printf("err handling data: %v\n", err)
+		}
+
 		err = message.Ack(false)
 		if err != nil {
 			fmt.Printf("error acknowledging delivery on client: %v\n", err)
