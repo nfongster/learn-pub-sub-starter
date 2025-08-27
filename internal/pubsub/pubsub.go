@@ -3,6 +3,7 @@ package pubsub
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -21,6 +22,12 @@ const (
 	NackRequeue AckType = "nack_requeue"
 	NackDiscard AckType = "nack_discard"
 )
+
+func failOnError(err error, msg string) {
+	if err != nil {
+		log.Panicf("%s: %s", msg, err)
+	}
+}
 
 func ConnectToRabbitMQ() (*amqp.Connection, *amqp.Channel, error) {
 	connectionStr := "amqp://guest:guest@localhost:5672/"
@@ -123,23 +130,33 @@ func DeclareAndBind(
 	key string,
 	queueType SimpleQueueType,
 ) (*amqp.Channel, amqp.Queue, error) {
-	channel, err := conn.Channel()
-	if err != nil {
-		return channel, amqp.Queue{}, err
+	ch, err := conn.Channel()
+	failOnError(err, "Failed to create a channel")
+
+	// Declare the DLX and DLQ
+	err = ch.ExchangeDeclare("peril_dlx", "fanout", true, false, false, false, nil)
+	failOnError(err, "Failed to declare the DLX")
+
+	_, err = ch.QueueDeclare("peril_dlq", true, false, false, false, nil)
+	failOnError(err, "Failed to declare the DLQ")
+
+	err = ch.QueueBind("peril_dlq", "", "peril_dlx", false, nil)
+	failOnError(err, "Failed to bind the DLQ to the DLX")
+
+	args := amqp.Table{
+		"x-dead-letter-exchange": "peril_dlx",
 	}
 
-	queue, err := channel.QueueDeclare(
+	queue, err := ch.QueueDeclare(
 		queueName,
 		queueType == Durable,
 		queueType == Transient,
 		queueType == Transient,
 		false,
-		nil,
+		args,
 	)
-	if err != nil {
-		return channel, queue, err
-	}
+	failOnError(err, "Failed to declare the main queue")
 
-	err = channel.QueueBind(queueName, key, exchange, false, nil)
-	return channel, queue, err
+	err = ch.QueueBind(queueName, key, exchange, false, nil)
+	return ch, queue, err
 }
