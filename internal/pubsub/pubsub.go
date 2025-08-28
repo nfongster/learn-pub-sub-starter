@@ -1,10 +1,14 @@
 package pubsub
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -54,6 +58,21 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 		ContentType: "application/json",
 		Body:        bytes,
 	}
+	return ch.Publish(exchange, key, false, false, msg)
+}
+
+func PublishGob[T any](ch *amqp.Channel, exchange, key string, val T) error {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(val); err != nil {
+		return err
+	}
+
+	msg := amqp.Publishing{
+		ContentType: "application/gob",
+		Body:        buf.Bytes(),
+	}
+
 	return ch.Publish(exchange, key, false, false, msg)
 }
 
@@ -154,4 +173,23 @@ func DeclareAndBind(
 
 	err = ch.QueueBind(queueName, key, exchange, false, nil)
 	return ch, queue, err
+}
+
+func PublishGameLog(ch *amqp.Channel, username, message string) AckType {
+	gl := routing.GameLog{
+		CurrentTime: time.Now(),
+		Message:     message,
+		Username:    username,
+	}
+	err := PublishGob(
+		ch,
+		string(routing.ExchangePerilTopic),
+		string(routing.GameLogSlug)+"."+username,
+		gl,
+	)
+	if err != nil {
+		fmt.Printf("error publishing game log (will requeue): %v\n", err)
+		return NackRequeue
+	}
+	return Ack
 }

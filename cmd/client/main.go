@@ -73,7 +73,7 @@ func main() {
 		string(routing.WarRecognitionsPrefix),
 		string(routing.WarRecognitionsPrefix)+".*",
 		pubsub.Durable,
-		handlerWar(gamestate),
+		handlerWar(gamestate, ch),
 	)
 	if err != nil {
 		fmt.Printf("Error subscribing to war channel: %v", err)
@@ -140,11 +140,14 @@ func handlerMove(gs *gamelogic.GameState, ch *amqp091.Channel) func(gamelogic.Ar
 	return func(move gamelogic.ArmyMove) pubsub.AckType {
 		defer fmt.Print("> ")
 		outcome := gs.HandleMove(move)
+
 		switch outcome {
 		case gamelogic.MoveOutcomeSamePlayer:
 			return pubsub.NackDiscard
+
 		case gamelogic.MoveOutComeSafe:
 			return pubsub.Ack
+
 		case gamelogic.MoveOutcomeMakeWar:
 			key := fmt.Sprintf("%s.%s", routing.WarRecognitionsPrefix, gs.Player.Username)
 			rec := gamelogic.RecognitionOfWar{
@@ -162,28 +165,37 @@ func handlerMove(gs *gamelogic.GameState, ch *amqp091.Channel) func(gamelogic.Ar
 				return pubsub.NackRequeue
 			}
 			return pubsub.Ack
+
 		default:
 			return pubsub.NackDiscard
 		}
 	}
 }
 
-func handlerWar(gs *gamelogic.GameState) func(gamelogic.RecognitionOfWar) pubsub.AckType {
+func handlerWar(gs *gamelogic.GameState, ch *amqp091.Channel) func(gamelogic.RecognitionOfWar) pubsub.AckType {
 	return func(rec gamelogic.RecognitionOfWar) pubsub.AckType {
 		defer fmt.Print("> ")
-		outcome, _, _ := gs.HandleWar(rec)
+		outcome, winner, loser := gs.HandleWar(rec)
 
 		switch outcome {
 		case gamelogic.WarOutcomeNotInvolved:
 			return pubsub.NackRequeue
+
 		case gamelogic.WarOutcomeNoUnits:
 			return pubsub.NackDiscard
+
 		case gamelogic.WarOutcomeOpponentWon:
-			return pubsub.Ack
+			msg := fmt.Sprintf("%s won a war against %s", winner, loser)
+			return pubsub.PublishGameLog(ch, gs.GetUsername(), msg)
+
 		case gamelogic.WarOutcomeYouWon:
-			return pubsub.Ack
+			msg := fmt.Sprintf("%s won a war against %s", winner, loser)
+			return pubsub.PublishGameLog(ch, gs.GetUsername(), msg)
+
 		case gamelogic.WarOutcomeDraw:
-			return pubsub.Ack
+			msg := fmt.Sprintf("A war between %s and %s resulted in a draw", winner, loser)
+			return pubsub.PublishGameLog(ch, gs.GetUsername(), msg)
+
 		default:
 			fmt.Println("error: unrecognized war outcome")
 			return pubsub.NackDiscard
