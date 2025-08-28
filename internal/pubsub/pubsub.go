@@ -84,6 +84,44 @@ func SubscribeJSON[T any](
 	queueType SimpleQueueType,
 	handler func(T) AckType,
 ) error {
+	return subscribe(conn, exchange, queueName, key, queueType, handler,
+		func(data []byte) (T, error) {
+			var strct T
+			err := json.Unmarshal(data, &strct)
+			return strct, err
+		},
+	)
+}
+
+func SubscribeGob[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType,
+	handler func(T) AckType,
+) error {
+	return subscribe(conn, exchange, queueName, key, queueType, handler,
+		func(data []byte) (T, error) {
+			buf := bytes.NewBuffer(data)
+			dec := gob.NewDecoder(buf)
+
+			var strct T
+			err := dec.Decode(&strct)
+			return strct, err
+		},
+	)
+}
+
+func subscribe[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType,
+	handler func(T) AckType,
+	unmarshaller func([]byte) (T, error),
+) error {
 	channel, _, err := DeclareAndBind(
 		conn,
 		exchange,
@@ -108,14 +146,13 @@ func SubscribeJSON[T any](
 		return err
 	}
 
-	go consumeChannel(deliveryCh, handler)
+	go consumeChannel(deliveryCh, handler, unmarshaller)
 	return nil
 }
 
-func consumeChannel[T any](ch <-chan amqp.Delivery, handler func(T) AckType) {
+func consumeChannel[T any](ch <-chan amqp.Delivery, handler func(T) AckType, unmarshaller func([]byte) (T, error)) {
 	for message := range ch {
-		var data T
-		err := json.Unmarshal(message.Body, &data)
+		data, err := unmarshaller(message.Body)
 		if err != nil {
 			fmt.Printf("error unmarshalling data consumed by client: %v\n", err)
 		}

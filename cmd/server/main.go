@@ -34,6 +34,20 @@ func main() {
 		return
 	}
 
+	// Subscribe to logs
+	err = pubsub.SubscribeGob(
+		connection,
+		string(routing.ExchangePerilDirect), //exchange?
+		string(routing.GameLogSlug),
+		string(routing.GameLogSlug)+".*",
+		pubsub.Durable,
+		handlerLog(),
+	)
+	if err != nil {
+		fmt.Printf("Error subscribing to logs channel: %v", err)
+		return
+	}
+
 	// REPL
 	for {
 		input := gamelogic.GetInput()
@@ -72,4 +86,16 @@ func ToggleGameState(channel *amqp091.Channel, pause bool) error {
 		routing.PauseKey,
 		routing.PlayingState{IsPaused: pause},
 	)
+}
+
+func handlerLog() func(routing.GameLog) pubsub.AckType {
+	return func(gamelog routing.GameLog) pubsub.AckType {
+		defer fmt.Print("> ")
+		err := gamelogic.WriteLog(gamelog)
+		if err != nil {
+			fmt.Printf("error handling log: %v\n", err)
+			return pubsub.NackRequeue
+		}
+		return pubsub.Ack
+	}
 }
