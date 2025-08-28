@@ -133,6 +133,11 @@ func subscribe[T any](
 		return err
 	}
 
+	// Prefetch!
+	if err = channel.Qos(10, 0, true); err != nil {
+		return err
+	}
+
 	deliveryCh, err := channel.Consume(
 		queueName,
 		"",
