@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -116,7 +117,20 @@ func main() {
 		} else if command == "help" {
 			gamelogic.PrintClientHelp()
 		} else if command == "spam" {
-			fmt.Println("Spamming not allowed yet!")
+			if len(words) < 2 {
+				fmt.Println("spam command expected an arg (count)")
+			}
+
+			count, err := strconv.Atoi(words[1])
+			if err != nil {
+				fmt.Println("spam command requires an integer arg")
+				continue
+			}
+
+			for range count {
+				maliciousLog := gamelogic.GetMaliciousLog()
+				pubsub.PublishGameLog(channel, username, maliciousLog)
+			}
 		} else if command == "quit" {
 			gamelogic.PrintQuit()
 			break
