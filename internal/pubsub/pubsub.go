@@ -115,11 +115,6 @@ func consumeChannel[T any](ch <-chan amqp.Delivery, handler func(T) AckType) {
 		if err != nil {
 			fmt.Printf("err handling data: %v\n", err)
 		}
-
-		err = message.Ack(false)
-		if err != nil {
-			fmt.Printf("error acknowledging delivery on client: %v\n", err)
-		}
 	}
 }
 
